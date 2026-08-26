@@ -213,15 +213,29 @@ Grounded assistant response (with source citations)
 | `GroqProvider` (`app/llm/groq.py`) | COMPLETE |
 | `get_llm_provider()` factory (`app/llm/factory.py`) | COMPLETE |
 | `GET /health` and `GET /health/llm` endpoints | COMPLETE |
-| `POST /api/v1/chat` endpoint | COMPLETE |
+| `POST /api/v1/chat` endpoint (session-aware) | COMPLETE |
 | Structured error responses (exceptions + handlers) | COMPLETE |
-| 14 unit tests (no Ollama) | COMPLETE |
-| 3 Ollama integration tests (qwen2.5:7b-instruct) | COMPLETE |
+| Async SQLAlchemy engine + session factory (`app/db/`) | COMPLETE |
+| ORM models: `Session`, `Message` (`app/db/models.py`) | COMPLETE |
+| CRUD service (`app/db/crud.py`) | COMPLETE |
+| Sessions API: `POST/GET /api/v1/sessions` | COMPLETE |
+| Alembic migration environment + `0001_initial.py` | COMPLETE |
+| `DATABASE_URL`, `CHAT_HISTORY_LIMIT` config + `.env.example` | COMPLETE |
+| 26 unit tests passing; 3 integration tests auto-skip | COMPLETE |
+| `ingestion/fetch.py` — Git Tree API, SHA manifest, retry on 429 | COMPLETE |
+| `ingestion/parse.py` — YAML frontmatter + speaker-turn regex, `ParsedEpisode` | COMPLETE |
+| `ingestion/chunk.py` — 500-word sliding window, turn snapping, timestamps | COMPLETE |
+| `ingestion/run.py` — CLI `--limit`/`--force`/`--slug`, structured logs | COMPLETE |
+| `ingestion/README.md` — pipeline docs, schema, refresh strategy | COMPLETE |
+| 51 new ingestion tests (12 fetch, 23 parse, 18 chunk); 77 total passing | COMPLETE |
+| `pytest.ini` at repo root — `pythonpath=backend .` | COMPLETE |
+| `github_token`, `chunk_size`, `chunk_overlap` added to `config.py` | COMPLETE |
+| `PyYAML>=6.0` added to `requirements.txt` | COMPLETE |
 | Vector store decision (ChromaDB PROPOSED) | PROPOSED — awaiting finalisation |
 | Frontend framework decision (React + Vite) | CANDIDATE — awaiting finalisation |
 | Ship 30 skill design (principles, prompt, boundary) | PENDING — Phase 7 |
 | Artifact security (full CSP policy OQ7) | PENDING — Phase 8 |
-| Phase 3+ (PostgreSQL, RAG, etc.) | PENDING |
+| Phase 5+ (RAG, Vector Embedding) | PENDING |
 
 ---
 
@@ -237,43 +251,52 @@ Grounded assistant response (with source citations)
 *Resolved unknowns:*
 - OQ4 → Groq as cloud provider
 - OQ5 → `qwen2.5:7b-instruct` (Ollama); `nomic-embed-text` (embedding)
+- **OQ2 → Git Tree API + `raw.githubusercontent.com` + SHA-based manifest** (Phase 4 complete)
+- **OQ3 → Fixed-word sliding window: 500 target words, 100-word overlap, speaker-turn snapping** (Phase 4 complete)
 
 ---
 
 ## 10. Current State
 
-**Phase 2 (FastAPI + LLM Provider Foundation) complete.**
+**Phase 4 (Transcript Ingestion) complete.**
 
-Backend running at `http://localhost:8000`. Verified end-to-end:
-- `GET /health` → 200 OK
-- `GET /health/llm` → provider=ollama, model=qwen2.5:7b-instruct, reachable=true
-- `POST /api/v1/chat` → answer from qwen2.5:7b-instruct in ~3s
+Ingestion pipeline runs from repo root:
+```bash
+python -m ingestion.run --limit 3   # test run (3 episodes)
+python -m ingestion.run             # full run (~269 episodes)
+```
 
-Concrete implementation decisions recorded:
-- `groq==1.6.0` (required for httpx 0.28 compatibility)
-- `pydantic==2.9.2` / `pydantic-settings==2.4.0`
-- `httpx==0.28.1`
-- Python 3.10.9 (runtime)
-- `pytest.ini` in `backend/` with `asyncio_mode=auto`
-- Provider dependency-injected via FastAPI `Depends()` — never directly imported in routes
-- Integration tests auto-skip when Ollama is not running
+Verified output (3-episode run):
+- `ingestion/processed/episodes/{slug}.json` — YAML frontmatter + 162 speaker turns
+- `ingestion/processed/chunks/{slug}.jsonl` — 22 chunks, avg 709 words, all 13 metadata fields
+- `ingestion/processed/manifest.json` — SHA index; refresh run correctly skips unchanged episodes
+- `--force` flag force-refreshes a single episode regardless of SHA
+
+Key implementation decisions:
+- **Fetch**: Single Git Tree API call (not N per-episode Contents API calls); raw URL download
+- **Parse**: `yaml.safe_load()` for frontmatter; regex `Speaker (HH:MM:SS):` for turns; no field raises on absence
+- **Chunk**: 500-word sliding window; snaps to speaker-turn boundary ±50 words; hard-splits turns > 1000 words
+- **Timestamps**: `start_timestamp`/`end_timestamp` from first/last turn in each chunk window
+- **Source tracing**: Every chunk carries `episode_id`, `source_file`, `guest`, `date`, `youtube_url`, `video_id`
+- **Path fix**: Root-level `pytest.ini` with `pythonpath=backend .` enables both `from app.*` and `from ingestion.*`
+- 77 total unit tests pass (26 Phase 2/3 + 51 Phase 4 ingestion)
 
 ---
 
 ## 11. Current Next Step
 
-**Phase 3 — PostgreSQL Persistence.**
+**Phase 5 — Vector Indexing & RAG.**
 
-Add SQLAlchemy async + asyncpg, define ORM models (Session, Message, Artifact),
-create Alembic migration, and wire session CRUD into the `/chat` endpoint.
+Phase 4 JSONL output is ready for embedding:
+```
+ingestion/processed/chunks/*.jsonl
+→ embeddings (nomic-embed-text via Ollama)
+→ vector store (ChromaDB — OQ1 pending finalisation)
+→ RAG retrieval endpoint
+```
 
-**Remaining open decisions (still unresolved before relevant phases):**
-1. OQ1: ChromaDB vs pgvector vs Qdrant (blocks Phase 5)
-2. OQ2: Ingestion fetch strategy (blocks Phase 4)
-3. OQ6: React + Vite confirmed? (blocks Phase 9)
-4. OQ3: Chunking strategy (blocks Phase 4/5)
-
-**No Phase 3 should begin until the user signals readiness.**
+**Open decisions for Phase 5:**
+1. OQ1: ChromaDB vs pgvector vs Qdrant (must resolve before Phase 5 starts)
 
 ---
 

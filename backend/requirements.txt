@@ -20,6 +20,16 @@ groq==1.6.0
 # Environment variable loading
 python-dotenv==1.0.1
 
+# ── Phase 3: Database ─────────────────────────────────────────────────────────
+sqlalchemy[asyncio]==2.0.31   # async ORM
+asyncpg==0.29.0               # PostgreSQL async driver (production)
+alembic==1.13.2               # schema migrations
+aiosqlite==0.20.0             # SQLite async driver (unit test fixtures only)
+
+# ── Phase 4: Ingestion pipeline ───────────────────────────────────────────────
+PyYAML>=6.0                   # YAML frontmatter parsing in ingestion/parse.py
+# httpx already listed above — also used in ingestion/fetch.py
+
 # ── Testing ───────────────────────────────────────────────────────────────────
 pytest==8.2.2
 pytest-asyncio==0.23.7

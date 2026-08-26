@@ -14,12 +14,14 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.errors.exceptions import (
+    DatabaseError,
     InvalidRequestError,
     LLMProviderError,
     LLMTimeoutError,
     LennyBaseError,
     ProviderConfigError,
     ProviderUnavailableError,
+    SessionNotFoundError,
 )
 
 logger = logging.getLogger(__name__)
@@ -120,3 +122,27 @@ async def handle_unexpected_error(
         "internal_error",
         "An unexpected error occurred. Please try again or contact support.",
     )
+
+
+async def handle_session_not_found(
+    request: Request, exc: SessionNotFoundError
+) -> JSONResponse:
+    """Session ID not found in database → 404."""
+    logger.warning(
+        "Session not found",
+        extra={"component": "api", "session_id": exc.session_id},
+    )
+    return _error_response(404, "session_not_found", exc.detail)
+
+
+async def handle_database_error(
+    request: Request, exc: DatabaseError
+) -> JSONResponse:
+    """Database operation failed → 503. No DB internals in response."""
+    logger.error(
+        "Database error",
+        extra={"component": "db"},
+        exc_info=True,
+    )
+    return _error_response(503, "database_error", exc.detail)
+

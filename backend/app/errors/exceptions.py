@@ -54,3 +54,21 @@ class ProviderConfigError(LennyBaseError):
 
 class InvalidRequestError(LennyBaseError):
     """The client sent a request that cannot be processed."""
+
+
+# ── Persistence errors ────────────────────────────────────────────────────────
+
+class SessionNotFoundError(LennyBaseError):
+    """Requested session_id does not exist in the database."""
+
+    def __init__(self, session_id: str) -> None:
+        self.session_id = session_id
+        super().__init__(f"Session '{session_id}' not found.")
+
+
+class DatabaseError(LennyBaseError):
+    """
+    A database operation failed (connection error, transaction error, etc.).
+    Never exposes raw SQL or connection details in the message.
+    """
+

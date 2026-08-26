@@ -112,13 +112,19 @@ async def _raise_unavailable(messages, **_):
     raise ProviderUnavailableError(provider="mock", detail="Mock offline.")
 
 
-def test_llm_provider_error_returns_502(client_with_mock_provider):
+def test_llm_provider_error_returns_502():
     """
     If the LLM provider raises LLMProviderError during a chat request,
     the API must return HTTP 502 with a structured error body.
     """
+    import asyncio
+    from httpx import ASGITransport, AsyncClient
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from app.api.routes.chat import _get_provider
-    from app.llm.base import LLMResponse, Message, ProviderStatus
+    from app.api.routes.health import _get_provider as _health_get_provider
+    from app.db.deps import get_db
+    from app.db.models import Base
+    from app.llm.base import ProviderStatus
     from app.main import app
 
     class FailingProvider:
@@ -131,24 +137,54 @@ def test_llm_provider_error_returns_502(client_with_mock_provider):
         async def check_health(self):
             return ProviderStatus(provider="mock", model="mock", reachable=True)
 
-    app.dependency_overrides[_get_provider] = lambda: FailingProvider()
-    try:
-        from fastapi.testclient import TestClient
-        with TestClient(app) as c:
-            resp = c.post("/api/v1/chat", json={"message": "Hello"})
-        assert resp.status_code == 502
-        body = resp.json()
-        assert body["error"]["code"] == "llm_provider_error"
-    finally:
-        app.dependency_overrides.clear()
+    async def run_test():
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        factory = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+
+        async def override_get_db():
+            async with factory() as session:
+                try:
+                    yield session
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+                    raise
+
+        app.dependency_overrides[_get_provider] = lambda: FailingProvider()
+        app.dependency_overrides[_health_get_provider] = lambda: FailingProvider()
+        app.dependency_overrides[get_db] = override_get_db
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as c:
+                # Create a session first
+                sess = await c.post("/api/v1/sessions")
+                sid = sess.json()["session_id"]
+                resp = await c.post("/api/v1/chat", json={"message": "Hello", "session_id": sid})
+            assert resp.status_code == 502
+            body = resp.json()
+            assert body["error"]["code"] == "llm_provider_error"
+        finally:
+            app.dependency_overrides.clear()
+            await engine.dispose()
+
+    asyncio.run(run_test())
 
 
-def test_provider_unavailable_returns_503(client_with_mock_provider):
+
+def test_provider_unavailable_returns_503():
     """
     If the LLM provider raises ProviderUnavailableError,
     the API must return HTTP 503.
     """
+    import asyncio
+    from httpx import ASGITransport, AsyncClient
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from app.api.routes.chat import _get_provider
+    from app.api.routes.health import _get_provider as _health_get_provider
+    from app.db.deps import get_db
+    from app.db.models import Base
     from app.llm.base import ProviderStatus
     from app.main import app
 
@@ -162,13 +198,36 @@ def test_provider_unavailable_returns_503(client_with_mock_provider):
         async def check_health(self):
             return ProviderStatus(provider="mock", model="mock", reachable=False)
 
-    app.dependency_overrides[_get_provider] = lambda: UnavailableProvider()
-    try:
-        from fastapi.testclient import TestClient
-        with TestClient(app) as c:
-            resp = c.post("/api/v1/chat", json={"message": "Hello"})
-        assert resp.status_code == 503
-        body = resp.json()
-        assert body["error"]["code"] == "provider_unavailable"
-    finally:
-        app.dependency_overrides.clear()
+    async def run_test():
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        factory = async_sessionmaker(engine, expire_on_commit=False, autoflush=False)
+
+        async def override_get_db():
+            async with factory() as session:
+                try:
+                    yield session
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+                    raise
+
+        app.dependency_overrides[_get_provider] = lambda: UnavailableProvider()
+        app.dependency_overrides[_health_get_provider] = lambda: UnavailableProvider()
+        app.dependency_overrides[get_db] = override_get_db
+        try:
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as c:
+                sess = await c.post("/api/v1/sessions")
+                sid = sess.json()["session_id"]
+                resp = await c.post("/api/v1/chat", json={"message": "Hello", "session_id": sid})
+            assert resp.status_code == 503
+            body = resp.json()
+            assert body["error"]["code"] == "provider_unavailable"
+        finally:
+            app.dependency_overrides.clear()
+            await engine.dispose()
+
+    asyncio.run(run_test())
+

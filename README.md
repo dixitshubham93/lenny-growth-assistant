@@ -1,6 +1,6 @@
 # Lenny Growth Assistant
 
-> **Status: Phase 2 Complete — FastAPI + LLM Provider Foundation Live**
+> **Status: Phase 3 Complete — PostgreSQL Persistence Layer Live**
 
 This repository is being built incrementally as a take-home assignment for a
 Forward Deployed Engineer role. The codebase is scaffolded but application
@@ -55,11 +55,17 @@ lenny-growth-assistant/
 |-------------|---------|-------|
 | Python | 3.10+ | Tested on 3.10.9 |
 | Ollama | Latest | Required for local/demo run |
+| PostgreSQL | 13+ | Required for Phase 3+ persistence |
 
 **Ollama model setup (one-time):**
 ```bash
 ollama pull qwen2.5:7b-instruct   # LLM — required for demo
 ollama pull nomic-embed-text       # Embedding model — required for Phase 5+
+```
+
+**PostgreSQL setup (one-time):**
+```bash
+createdb lenny_db   # Or via psql: CREATE DATABASE lenny_db;
 ```
 
 ### Install backend dependencies
@@ -73,7 +79,16 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env — no changes needed to run locally with Ollama
+# Edit .env:
+#   LLM_PROVIDER=ollama          (default — no key needed)
+#   DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/lenny_db
+```
+
+### Run database migrations (Phase 3+)
+
+```bash
+cd backend
+alembic upgrade head
 ```
 
 ### Start the API server
@@ -112,25 +127,38 @@ curl http://localhost:8000/health/llm
 # {"status":"ok","provider":"ollama","model":"qwen2.5:7b-instruct","reachable":true,...}
 ```
 
-**Chat (Ollama):**
+**Create a session:**
 ```bash
+curl -X POST http://localhost:8000/api/v1/sessions
+# {"session_id":"<uuid>","created_at":"..."}
+```
+
+**Chat (session-aware):**
+```bash
+SESSION=$(curl -s -X POST http://localhost:8000/api/v1/sessions | python -c "import sys,json; print(json.load(sys.stdin)['session_id'])")
 curl -X POST http://localhost:8000/api/v1/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "What is product-market fit?"}'
+  -d "{\"message\": \"What is product-market fit?\", \"session_id\": \"$SESSION\"}"
+```
+
+**Get session messages:**
+```bash
+curl http://localhost:8000/api/v1/sessions/$SESSION/messages
 ```
 
 ### Running tests
 
-**Unit tests (no Ollama required):**
+**All unit tests (no Ollama or PostgreSQL required):**
 ```bash
 cd backend
-python -m pytest ../tests/test_health.py ../tests/test_chat.py ../tests/test_provider_factory.py -v
+python -m pytest ../tests/ --ignore=../tests/test_integration_postgres.py -v
+# Expected: 26 passed, 3 skipped
 ```
 
-**Integration tests (requires Ollama running):**
+**Integration tests (requires Ollama running + DATABASE_URL set):**
 ```bash
 cd backend
-python -m pytest ../tests/test_integration_ollama.py -v -s
+python -m pytest ../tests/test_integration_ollama.py ../tests/test_integration_postgres.py -v -s
 ```
 
 

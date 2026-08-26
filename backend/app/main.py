@@ -24,23 +24,28 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.errors.exceptions import (
+    DatabaseError,
     InvalidRequestError,
     LLMProviderError,
     LLMTimeoutError,
     ProviderConfigError,
     ProviderUnavailableError,
+    SessionNotFoundError,
 )
 from app.errors.handlers import (
+    handle_database_error,
     handle_invalid_request,
     handle_llm_provider_error,
     handle_llm_timeout,
     handle_provider_config_error,
     handle_provider_unavailable,
+    handle_session_not_found,
     handle_unexpected_error,
     handle_validation_error,
 )
 from app.api.routes import health as health_router
 from app.api.routes import chat as chat_router
+from app.api.routes import sessions as sessions_router
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 
@@ -62,6 +67,7 @@ async def lifespan(application: FastAPI):
             "component": "startup",
             "environment": settings.app_env,
             "llm_provider": settings.llm_provider,
+            "db_configured": bool(settings.database_url),
             # Intentionally NOT logging API keys or secrets
         },
     )
@@ -80,9 +86,9 @@ def create_app() -> FastAPI:
         title="Lenny Growth Assistant API",
         description=(
             "Conversational AI grounded in Lenny's Podcast transcripts. "
-            "Phase 2: LLM provider foundation (RAG, sessions, and artifacts in later phases)."
+            "Phase 3: Session persistence. RAG, artifacts, and frontend in later phases."
         ),
-        version="0.1.0",
+        version="0.2.0",
         lifespan=lifespan,
         docs_url="/docs",
         redoc_url="/redoc",
@@ -99,6 +105,8 @@ def create_app() -> FastAPI:
 
     # ── Exception handlers (order: most-specific first) ───────────────────────
     application.add_exception_handler(RequestValidationError, handle_validation_error)
+    application.add_exception_handler(SessionNotFoundError, handle_session_not_found)
+    application.add_exception_handler(DatabaseError, handle_database_error)
     application.add_exception_handler(ProviderConfigError, handle_provider_config_error)
     application.add_exception_handler(ProviderUnavailableError, handle_provider_unavailable)
     application.add_exception_handler(LLMTimeoutError, handle_llm_timeout)
@@ -108,6 +116,7 @@ def create_app() -> FastAPI:
 
     # ── Routers ───────────────────────────────────────────────────────────────
     application.include_router(health_router.router)
+    application.include_router(sessions_router.router)
     application.include_router(chat_router.router)
 
     return application

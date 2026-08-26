@@ -25,11 +25,22 @@ def _ollama_available() -> bool:
         return False
 
 
-# Skip the entire module if --run-integration flag is not present
-# OR if Ollama can't be reached.
+import asyncio
+
+def _db_url_configured() -> bool:
+    """Return True only if DATABASE_URL env var is set to a non-empty value."""
+    import os
+    url = os.environ.get("DATABASE_URL", "")
+    return bool(url and "postgresql" in url)
+
+
+# Skip if Ollama isn't running OR if DATABASE_URL isn't configured
 pytestmark = pytest.mark.skipif(
-    not _ollama_available(),
-    reason="Ollama not running on localhost:11434 — skipping integration tests.",
+    not _ollama_available() or not _db_url_configured(),
+    reason=(
+        "Skipped: requires Ollama on localhost:11434 AND "
+        "DATABASE_URL=postgresql+asyncpg://... in environment."
+    ),
 )
 
 

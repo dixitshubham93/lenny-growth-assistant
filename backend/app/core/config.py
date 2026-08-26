@@ -49,8 +49,18 @@ class Settings(BaseSettings):
     embedding_provider: str = "ollama"
     embedding_model: str = "nomic-embed-text"
 
-    # ── PostgreSQL (Phase 3) — accepted now so .env doesn't raise errors ──────
+    # ── PostgreSQL (Phase 3) — required for session persistence ──────────────
     database_url: str = ""
+
+    # ── Chat context window ──────────────────────────────────────────────────
+    chat_history_limit: int = 20  # prior messages passed to LLM per request
+
+    # ── Phase 4: Ingestion pipeline ──────────────────────────────────────────
+    # Optional GitHub token — raises rate limit from 60 to 5000 req/hr
+    github_token: str | None = None
+    # Sliding-window chunker settings (word counts, not token counts)
+    chunk_size: int = 500
+    chunk_overlap: int = 100
 
     # ── Derived helpers ──────────────────────────────────────────────────────
 

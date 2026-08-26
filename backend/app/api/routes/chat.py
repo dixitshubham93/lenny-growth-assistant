@@ -1,19 +1,29 @@
 """
-api/routes/chat.py — Chat endpoint.
+api/routes/chat.py — Chat endpoint (Phase 3: session-aware).
 
 POST /api/v1/chat
 
-Phase 2: wires request → LLM provider abstraction → response.
-No RAG retrieval yet (Phase 6).
-No session persistence yet (Phase 3).
+Flow:
+  1. Validate session_id is provided (Pydantic — 422 if missing)
+  2. Verify session exists in DB (404 if not)
+  3. Load session history (capped at CHAT_HISTORY_LIMIT)
+  4. Persist user message (before calling LLM)
+  5. Build LLM context: history + new user message
+  6. Call LLM provider
+  7a. On LLM success: persist assistant message, return response
+  7b. On LLM failure: do NOT delete user message; raise structured error
 """
 from __future__ import annotations
 
 import logging
 
 from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
+from app.db.crud import create_message, get_messages, get_session
+from app.db.deps import get_db
+from app.errors.exceptions import SessionNotFoundError
 from app.llm.base import LLMProvider, Message
 from app.llm.factory import get_llm_provider
 from app.schemas.chat import ChatRequest, ChatResponse
@@ -37,38 +47,63 @@ def _get_provider(settings: Settings = Depends(get_settings)) -> LLMProvider:
 async def chat(
     request: ChatRequest,
     provider: LLMProvider = Depends(_get_provider),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> ChatResponse:
     """
-    Phase 2 chat endpoint.
+    Session-aware chat endpoint.
 
-    Accepts a user message and returns the LLM's response.
-    Sources and session context will be populated in Phase 6 (RAG + agent).
-
-    The LLM provider is determined by LLM_PROVIDER env var:
-      - ollama  → local Ollama (default; required for demo)
-      - groq    → Groq cloud API
+    Requires a valid session_id (create one via POST /api/v1/sessions).
+    Loads that session's history as LLM context.
+    Persists both user message and assistant response.
+    If the LLM call fails, the user message is NOT deleted — it stays in history.
     """
+    session_id = request.session_id  # required by schema
+
+    # 1. Verify session exists
+    session = await get_session(db, session_id)
+    if session is None:
+        raise SessionNotFoundError(session_id)
+
+    # 2. Load conversation history (capped at CHAT_HISTORY_LIMIT)
+    history = await get_messages(db, session_id, limit=settings.chat_history_limit)
+
+    # 3. Persist user message NOW — commit immediately so it survives an LLM failure.
+    #    We use an explicit flush+commit here rather than relying on the get_db teardown
+    #    because the outer session would be rolled back on LLM exception.
+    await create_message(db, session_id, role="user", content=request.message)
+    await db.commit()   # ← commits user msg; get_db teardown will see nothing extra to commit
+
+    # 4. Build LLM messages: history + new user turn
+    llm_messages = [Message(role=m.role, content=m.content) for m in history]
+    llm_messages.append(Message(role="user", content=request.message))
+
+    system_prompt = request.system_prompt or _DEFAULT_SYSTEM_PROMPT
+
     logger.info(
-        "Chat request received",
+        "Chat request — calling LLM",
         extra={
             "component": "api",
+            "session_id": session_id,
             "provider": provider.provider_name,
-            "session_id": request.session_id,
+            "history_turns": len(history),
         },
     )
 
-    system_prompt = request.system_prompt or _DEFAULT_SYSTEM_PROMPT
-    messages = [Message(role="user", content=request.message)]
-
+    # 5. Call the LLM.  Any LLM exception propagates — user message already committed.
     llm_response = await provider.complete(
-        messages=messages,
+        messages=llm_messages,
         system_prompt=system_prompt,
     )
+
+    # 6. Persist assistant response (only on success)
+    await create_message(db, session_id, role="assistant", content=llm_response.content)
 
     logger.info(
         "Chat response sent",
         extra={
             "component": "api",
+            "session_id": session_id,
             "provider": provider.provider_name,
             "latency_ms": llm_response.latency_ms,
         },
@@ -81,6 +116,6 @@ async def chat(
         prompt_tokens=llm_response.prompt_tokens,
         completion_tokens=llm_response.completion_tokens,
         latency_ms=llm_response.latency_ms,
-        sources=[],           # populated in Phase 6
-        session_id=request.session_id,
+        sources=[],
+        session_id=session_id,
     )
