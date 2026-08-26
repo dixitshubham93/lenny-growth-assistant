@@ -147,13 +147,13 @@ async def _index_episode(
                             end_timestamp=chunk.get("end_timestamp"),
                             word_count=chunk.get("word_count", 0),
                             text=chunk["text"],
-                            embedding=vec_literal,
+                            embedding=vec,
                             indexed_at=now,
                         )
                         .on_conflict_do_update(
                             index_elements=["chunk_id"],
                             set_={
-                                "embedding": vec_literal,
+                                "embedding": vec,
                                 "indexed_at": now,
                             },
                         )

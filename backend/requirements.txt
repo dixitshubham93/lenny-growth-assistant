@@ -4,12 +4,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Web framework
-fastapi==0.111.1
-uvicorn[standard]==0.30.1
+fastapi>=0.111.1
+uvicorn[standard]>=0.30.1
 
 # Pydantic v2 (FastAPI 0.111 requires pydantic v2)
-pydantic==2.9.2
-pydantic-settings==2.4.0
+pydantic>=2.9.2
+pydantic-settings>=2.4.0
 
 # HTTP client — used by OllamaProvider to call the local Ollama REST API
 httpx==0.28.1

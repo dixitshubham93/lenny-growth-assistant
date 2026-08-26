@@ -115,3 +115,27 @@ This is a confirmed design constraint, not a detail to be deferred.
 ---
 
 *Detailed UI/UX design, component specifications, and interaction patterns will be added in Phase 9.*
+
+## 5. Artifact Security & Rendering Isolation
+
+The artifact viewer is designed to render generated content (like Ship 30 essays) securely inside a client-side environment. Since LLMs can theoretically generate arbitrary or malicious HTML/JavaScript, the application must aggressively sandbox all generated content.
+
+### Implementation Details:
+1. **HTML Isolation via Iframe Sandboxing:** 
+   When the agent returns an HTML artifact, the frontend injects it directly into a visually seamless `<iframe>` element. 
+   The iframe is secured using the HTML5 `sandbox` attribute:
+   ```html
+   <iframe 
+     sandbox="allow-same-origin"
+     title="Generated HTML artifact">
+   </iframe>
+   ```
+2. **What is Blocked:** 
+   Script execution (`allow-scripts` is intentionally omitted). The artifact cannot execute JavaScript, spawn popups, submit forms, or access the parent window's DOM or HTTP session cookies.
+3. **What is Permitted:** 
+   Native HTML styling and CSS layout. The `allow-same-origin` tag permits the iframe contents to retain structural CSS rules while remaining completely inert defensively.
+4. **Markdown Fallback:** 
+   If the artifact generated is pure Markdown (such as the Ship 30 writing skill mode), it is sanitized and parsed locally via an inert Javascript Markdown engine (`marked.js`), guaranteeing strict content isolation.
+
+### Why this approach was chosen:
+Containerizing generated content within an iframe sandbox provides the highest level of security known for web rendering. Attempting to parse and sanitize dynamic HTML via Regex or DOM purification is notoriously flaky. An iframe effectively transfers the security burden directly to the browser's deeply tested process isolation boundaries.

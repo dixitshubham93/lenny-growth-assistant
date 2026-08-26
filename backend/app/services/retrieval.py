@@ -106,6 +106,7 @@ async def retrieve_chunks(
             cosine_distance=float(row["cosine_distance"]),
         )
         for row in rows
+        if float(row["cosine_distance"]) <= settings.rag_max_distance
     ]
 
     logger.debug(

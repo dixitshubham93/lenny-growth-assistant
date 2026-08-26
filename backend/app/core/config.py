@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     # ── Ollama ───────────────────────────────────────────────────────────────
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:7b-instruct"
-    ollama_timeout_seconds: float = 120.0
+    ollama_timeout_seconds: float = 300.0
 
     # ── Groq ─────────────────────────────────────────────────────────────────
     groq_api_key: str = ""
@@ -63,8 +63,9 @@ class Settings(BaseSettings):
     chunk_overlap: int = 100
 
     # ── Phase 6: Agent Layer ──────────────────────────────────────────────────
-    # Number of transcript chunks to retrieve per query
+    # RAG parameters
     rag_top_k: int = 5
+    rag_max_distance: float = 0.60
     # "internal" = Ollama/Groq native tool loop; "anthropic" = Claude Agent SDK
     agent_provider: str = "internal"
     # Required only when agent_provider="anthropic"

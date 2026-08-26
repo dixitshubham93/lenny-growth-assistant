@@ -216,3 +216,32 @@ async def test_retrieve_endpoint_respects_top_k(async_client):
     assert resp.status_code == 200
     assert resp.json()["result_count"] == 3
     assert len(resp.json()["results"]) == 3
+
+@pytest.mark.asyncio
+async def test_retrieve_filters_high_cosine_distance():
+    """Chunks with distance > settings.rag_max_distance should be filtered out."""
+    from app.services.retrieval import retrieve_chunks
+    from app.core.config import Settings
+
+    settings = Settings.model_construct(
+        ollama_base_url="http://localhost:11434",
+        embedding_model="nomic-embed-text",
+        rag_max_distance=0.60,
+    )
+
+    # 0.40 -> keep, 0.55 -> keep, 0.65 -> drop
+    row1 = _fake_chunk_row(chunk_id="ep-000", cosine_distance=0.40)
+    row2 = _fake_chunk_row(chunk_id="ep-001", cosine_distance=0.55)
+    row3 = _fake_chunk_row(chunk_id="ep-002", cosine_distance=0.65)
+
+    mock_db = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.mappings.return_value.all.return_value = [row1, row2, row3]
+    mock_db.execute.return_value = mock_result
+
+    with patch("app.services.retrieval.embed_text", return_value=FAKE_VEC):
+        chunks = await retrieve_chunks("irrelevant query", mock_db, settings, top_k=5)
+
+    assert len(chunks) == 2
+    assert chunks[0].chunk_id == "ep-000"
+    assert chunks[1].chunk_id == "ep-001"

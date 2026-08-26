@@ -140,3 +140,75 @@ async def test_agent_mock_provider_bypass(mock_db, settings):
     assert result.sources == []
     assert result.artifact is None
 
+
+@pytest.mark.asyncio
+@patch("app.services.agent._execute_transcript_search")
+async def test_irrelevant_retrieval_returns_no_grounding(mock_search, mock_db, settings, mock_provider):
+    """Empty retrieval should result in empty sources and prompt model to refuse."""
+    mock_search.return_value = ([], [])
+
+    mock_response_1 = MagicMock()
+    mock_response_1.json.return_value = {
+        "message": {
+            "content": "",
+            "tool_calls": [
+                {"function": {"name": "transcript_search", "arguments": '{"query": "penguin mating behavior"}'}}
+            ]
+        }
+    }
+    
+    mock_response_2 = MagicMock()
+    mock_response_2.json.return_value = {
+        "message": {"content": "There is insufficient transcript evidence to answer this."}
+    }
+
+    mock_http_client = AsyncMock()
+    mock_http_client.post.side_effect = [mock_response_1, mock_response_2]
+    mock_http_client_cls = MagicMock()
+    mock_http_client_cls.__aenter__.return_value = mock_http_client
+
+    with patch("httpx.AsyncClient", return_value=mock_http_client_cls):
+        runner = AgentRunner(mock_db, settings, mock_provider)
+        result = await runner.run("penguin mating behavior", [])
+
+        # The sources should be empty!
+        assert len(result.sources) == 0
+        assert "insufficient transcript evidence" in result.answer
+
+
+@pytest.mark.asyncio
+@patch("app.services.agent._execute_transcript_search")
+async def test_ship30_insufficient_grounding_regression(mock_search, mock_db, settings, mock_provider):
+    """Empty retrieval during Ship 30 should not fabricate data."""
+    # mock_search is called indirectly by write_ship_30_essay
+    mock_search.return_value = ([], [])
+
+    mock_provider.complete.return_value.content = "insufficient transcript evidence to write the essay"
+
+    mock_response_1 = MagicMock()
+    mock_response_1.json.return_value = {
+        "message": {
+            "content": "",
+            "tool_calls": [
+                {"function": {"name": "write_ship_30_essay", "arguments": '{"topic": "aliens"}'}}
+            ]
+        }
+    }
+    
+    # We simulate Ollama replying after seeing the tool execution
+    mock_response_2 = MagicMock()
+    mock_response_2.json.return_value = {
+        "message": {"content": "I couldn't write it because lack of evidence."}
+    }
+
+    mock_http_client = AsyncMock()
+    mock_http_client.post.side_effect = [mock_response_1, mock_response_2]
+    mock_http_client_cls = MagicMock()
+    mock_http_client_cls.__aenter__.return_value = mock_http_client
+
+    with patch("httpx.AsyncClient", return_value=mock_http_client_cls):
+        runner = AgentRunner(mock_db, settings, mock_provider)
+        result = await runner.run("write a ship30 essay about aliens", [])
+
+        assert len(result.sources) == 0
+        assert "insufficient transcript evidence" in result.artifact

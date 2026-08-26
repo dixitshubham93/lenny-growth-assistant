@@ -66,6 +66,7 @@ async def _execute_transcript_search(
     query: str,
     db: AsyncSession,
     settings: Settings,
+    top_k_override: int | None = None,
 ) -> tuple[list[dict], list[SourceCitationData]]:
     """
     Framework-independent transcript search capability.
@@ -77,7 +78,7 @@ async def _execute_transcript_search(
             query=query,
             db=db,
             settings=settings,
-            top_k=settings.rag_top_k,
+            top_k=top_k_override if top_k_override is not None else settings.rag_top_k,
         )
     except EmbeddingError:
         logger.warning("EmbeddingError during transcript search; returning empty results")
@@ -122,8 +123,15 @@ async def _execute_write_ship_30_essay(
     from skills.ship30.implementation.ship30_skill import Ship30Skill
     skill = Ship30Skill()
 
-    chunks_data, citations = await _execute_transcript_search(topic, db, settings)
-    context = "\n\n---\n\n".join(c["text"] for c in chunks_data) if chunks_data else ""
+    chunks_data, citations = await _execute_transcript_search(topic, db, settings, top_k_override=2)
+    
+    def _truncate(text: str) -> str:
+        words = text.split()
+        if len(words) > 300:
+            return " ".join(words[:300]) + "..."
+        return text
+
+    context = "\n\n---\n\n".join(_truncate(c["text"]) for c in chunks_data) if chunks_data else ""
     prompt = skill.build_prompt(topic=topic, context=context)
 
     response = await provider.complete(
@@ -175,10 +183,10 @@ _GROUNDED_SYSTEM_PROMPT = (
     "grounded exclusively in Lenny's Podcast transcripts.\n\n"
     "Rules:\n"
     "1. ALWAYS call transcript_search before answering product/growth questions.\n"
-    "2. ONLY cite facts that were returned by transcript_search.\n"
-    "3. If no relevant transcript material is found, say so explicitly.\n"
+    "2. ONLY cite facts that were returned by transcript_search. Do not answer from general world knowledge.\n"
+    "3. If the transcript_search returns no results, or if the results are irrelevant/insufficient, you MUST explicitly state that there is insufficient transcript evidence to answer.\n"
     "4. If the user wants a Ship 30 for 30 essay, call write_ship_30_essay.\n"
-    "5. Never fabricate transcript citations or source metadata."
+    "5. Never fabricate any episode, guest, timestamp, quote, or source details."
 )
 
 
@@ -406,7 +414,7 @@ class AgentRunner:
 
                 logger.info(
                     "Agent tool call",
-                    extra={"component": "agent", "tool": fn_name, "args": fn_args},
+                    extra={"component": "agent", "tool": fn_name, "tool_args": fn_args},
                 )
 
                 if fn_name == "transcript_search":

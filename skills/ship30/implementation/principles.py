@@ -34,7 +34,9 @@ FORMATTING_RULES: str = (
 
 # Strict grounding requirement
 GROUNDING_RULE: str = (
-    "CRITICAL: Every claim, quote, and growth strategy in this essay MUST be derived "
-    "from the provided transcript context. Do not add outside knowledge. "
-    "If context is thin, explicitly acknowledge it rather than fabricating content."
+    "CRITICAL: Every single claim, quote, and growth strategy in this essay MUST be derived "
+    "exclusively from the provided transcript chunks. Do not add or invent any outside knowledge. "
+    "If the provided context is EMPTY or does not contain enough evidence to write the essay, "
+    "you MUST explicitly say that there is insufficient transcript evidence to write the essay and stop immediately. "
+    "You must not fabricate episode or source details under any circumstances."
 )
