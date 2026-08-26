@@ -33,6 +33,9 @@ PyYAML>=6.0                   # YAML frontmatter parsing in ingestion/parse.py
 # ── Phase 5: pgvector / RAG ────────────────────────────────────────────────────
 pgvector>=0.3.0               # VECTOR(768) column type + cosine distance for SQLAlchemy
 
+# ── Phase 6: Agent Layer ───────────────────────────────────────────────
+claude-agent-sdk>=0.2.144    # Anthropic Claude Agent SDK (ClaudeSDKClient, @tool)
+
 # ── Testing ───────────────────────────────────────────────────────────────────
 pytest==8.2.2
 pytest-asyncio==0.23.7

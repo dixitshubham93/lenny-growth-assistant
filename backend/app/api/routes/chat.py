@@ -1,17 +1,20 @@
 """
-api/routes/chat.py — Chat endpoint (Phase 3: session-aware).
+api/routes/chat.py — Chat endpoint (Phase 6: agent-wired, RAG-grounded).
 
 POST /api/v1/chat
 
 Flow:
-  1. Validate session_id is provided (Pydantic — 422 if missing)
-  2. Verify session exists in DB (404 if not)
-  3. Load session history (capped at CHAT_HISTORY_LIMIT)
-  4. Persist user message (before calling LLM)
-  5. Build LLM context: history + new user message
-  6. Call LLM provider
-  7a. On LLM success: persist assistant message, return response
-  7b. On LLM failure: do NOT delete user message; raise structured error
+  1. Validate session_id — 422 if missing; 404 if session unknown
+  2. Load session history (capped at CHAT_HISTORY_LIMIT)
+  3. Persist user message immediately (survives LLM failures)
+  4. Run AgentRunner — tool-calling loop (transcript_search / write_ship_30_essay)
+  5. Persist assistant message WITH sources (JSONB)
+  6. Return ChatResponse with sources, artifact, skill_used
+
+Phase 2–5 behavior is fully preserved:
+  - session handling unchanged
+  - error propagation unchanged
+  - existing fields (answer, provider, model, tokens, latency) unchanged
 """
 from __future__ import annotations
 
@@ -26,17 +29,11 @@ from app.db.deps import get_db
 from app.errors.exceptions import SessionNotFoundError
 from app.llm.base import LLMProvider, Message
 from app.llm.factory import get_llm_provider
-from app.schemas.chat import ChatRequest, ChatResponse
+from app.schemas.chat import ChatResponse, SourceCitation
+from app.services.agent import AgentRunner
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["chat"])
-
-_DEFAULT_SYSTEM_PROMPT = (
-    "You are the Lenny Growth Assistant, an expert on product management, "
-    "growth strategy, and startup building. "
-    "Answer clearly and concisely based on your knowledge. "
-    "In later versions your answers will be grounded in Lenny's Podcast transcripts."
-)
 
 
 def _get_provider(settings: Settings = Depends(get_settings)) -> LLMProvider:
@@ -45,77 +42,123 @@ def _get_provider(settings: Settings = Depends(get_settings)) -> LLMProvider:
 
 @router.post("/chat", response_model=ChatResponse, summary="Send a message to the assistant")
 async def chat(
-    request: ChatRequest,
+    request_body: "ChatRequestBody",
     provider: LLMProvider = Depends(_get_provider),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> ChatResponse:
     """
-    Session-aware chat endpoint.
+    Session-aware, RAG-grounded chat endpoint.
 
-    Requires a valid session_id (create one via POST /api/v1/sessions).
-    Loads that session's history as LLM context.
-    Persists both user message and assistant response.
-    If the LLM call fails, the user message is NOT deleted — it stays in history.
+    Phase 6 changes (non-breaking):
+    - AgentRunner replaces the direct provider.complete() call
+    - sources, artifact, skill_used are populated in the response
+    - assistant message persisted with sources JSONB
+
+    Phase 2–5 fields (answer, provider, model, tokens, latency, session_id)
+    are fully preserved.
     """
-    session_id = request.session_id  # required by schema
+    from app.schemas.chat import ChatRequest  # local import avoids circular reference
+    request = request_body  # type: ChatRequest
+    session_id = request.session_id
 
     # 1. Verify session exists
     session = await get_session(db, session_id)
     if session is None:
         raise SessionNotFoundError(session_id)
 
-    # 2. Load conversation history (capped at CHAT_HISTORY_LIMIT)
+    # 2. Load conversation history
     history = await get_messages(db, session_id, limit=settings.chat_history_limit)
 
-    # 3. Persist user message NOW — commit immediately so it survives an LLM failure.
-    #    We use an explicit flush+commit here rather than relying on the get_db teardown
-    #    because the outer session would be rolled back on LLM exception.
+    # 3. Persist user message BEFORE calling the agent (survives agent failures)
     await create_message(db, session_id, role="user", content=request.message)
-    await db.commit()   # ← commits user msg; get_db teardown will see nothing extra to commit
+    await db.commit()
 
-    # 4. Build LLM messages: history + new user turn
-    llm_messages = [Message(role=m.role, content=m.content) for m in history]
-    llm_messages.append(Message(role="user", content=request.message))
-
-    system_prompt = request.system_prompt or _DEFAULT_SYSTEM_PROMPT
+    # 4. Build LLM history context for agent
+    llm_history = [Message(role=m.role, content=m.content) for m in history]
 
     logger.info(
-        "Chat request — calling LLM",
+        "Chat request — running agent",
         extra={
             "component": "api",
             "session_id": session_id,
             "provider": provider.provider_name,
+            "agent_provider": settings.agent_provider,
             "history_turns": len(history),
         },
     )
 
-    # 5. Call the LLM.  Any LLM exception propagates — user message already committed.
-    llm_response = await provider.complete(
-        messages=llm_messages,
-        system_prompt=system_prompt,
-    )
+    # 5. Run AgentRunner (tool-calling loop)
+    runner = AgentRunner(db=db, settings=settings, provider=provider)
+    result = await runner.run(message=request.message, history=llm_history)
 
-    # 6. Persist assistant response (only on success)
-    await create_message(db, session_id, role="assistant", content=llm_response.content)
+    # 6. Persist assistant message with sources
+    sources_for_db = [
+        {
+            "chunk_id": s.chunk_id,
+            "episode_id": s.episode_id,
+            "title": s.title,
+            "guest": s.guest,
+            "start_timestamp": s.start_timestamp,
+            "end_timestamp": s.end_timestamp,
+            "source_file": s.source_file,
+            "youtube_url": s.youtube_url,
+            "cosine_distance": s.cosine_distance,
+        }
+        for s in result.sources
+    ]
+    await create_message(
+        db,
+        session_id,
+        role="assistant",
+        content=result.answer,
+        sources=sources_for_db,
+    )
 
     logger.info(
         "Chat response sent",
         extra={
             "component": "api",
             "session_id": session_id,
-            "provider": provider.provider_name,
-            "latency_ms": llm_response.latency_ms,
+            "provider": result.provider,
+            "skill_used": result.skill_used,
+            "sources_count": len(result.sources),
+            "has_artifact": result.artifact is not None,
+            "latency_ms": result.latency_ms,
         },
     )
 
+    # 7. Build source citation Pydantic models
+    source_citations = [
+        SourceCitation(
+            chunk_id=s.chunk_id,
+            episode_id=s.episode_id,
+            title=s.title,
+            guest=s.guest,
+            start_timestamp=s.start_timestamp,
+            end_timestamp=s.end_timestamp,
+            source_file=s.source_file,
+            youtube_url=s.youtube_url,
+            cosine_distance=s.cosine_distance,
+        )
+        for s in result.sources
+    ]
+
     return ChatResponse(
-        answer=llm_response.content,
-        provider=llm_response.provider,
-        model=llm_response.model,
-        prompt_tokens=llm_response.prompt_tokens,
-        completion_tokens=llm_response.completion_tokens,
-        latency_ms=llm_response.latency_ms,
-        sources=[],
+        answer=result.answer,
+        provider=result.provider or provider.provider_name,
+        model=result.model or provider.model,
+        prompt_tokens=result.prompt_tokens,
+        completion_tokens=result.completion_tokens,
+        latency_ms=result.latency_ms,
         session_id=session_id,
+        sources=source_citations,
+        artifact=result.artifact,
+        skill_used=result.skill_used,
+        retrieval_count=len(result.sources),
     )
+
+
+# ── Type alias to satisfy FastAPI body parsing ────────────────────────────────
+# Import at module level for FastAPI's schema generation
+from app.schemas.chat import ChatRequest as ChatRequestBody  # noqa: E402

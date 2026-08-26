@@ -62,6 +62,15 @@ class Settings(BaseSettings):
     chunk_size: int = 500
     chunk_overlap: int = 100
 
+    # ── Phase 6: Agent Layer ──────────────────────────────────────────────────
+    # Number of transcript chunks to retrieve per query
+    rag_top_k: int = 5
+    # "internal" = Ollama/Groq native tool loop; "anthropic" = Claude Agent SDK
+    agent_provider: str = "internal"
+    # Required only when agent_provider="anthropic"
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-3-5-sonnet-20241022"
+
     # ── Derived helpers ──────────────────────────────────────────────────────
 
     @property

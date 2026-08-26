@@ -50,12 +50,13 @@ async def create_message(
     session_id: str | uuid.UUID,
     role: str,
     content: str,
+    sources: list[dict] | None = None,
 ) -> Message:
     """Insert a message and update the parent session's updated_at."""
     sid = uuid.UUID(str(session_id))
     now = datetime.now(timezone.utc)
 
-    message = Message(session_id=sid, role=role, content=content, sources=[])
+    message = Message(session_id=sid, role=role, content=content, sources=sources or [])
     db.add(message)
 
     # Touch session.updated_at without loading the whole object
@@ -74,6 +75,7 @@ async def create_message(
             "session_id": str(sid),
             "role": role,
             "message_id": str(message.id),
+            "sources_count": len(sources or []),
         },
     )
     return message
