@@ -1,6 +1,6 @@
 # Lenny Growth Assistant
 
-> **Status: Phase 1b Complete — Product Discovery & Architecture Review Done**
+> **Status: Phase 2 Complete — FastAPI + LLM Provider Foundation Live**
 
 This repository is being built incrementally as a take-home assignment for a
 Forward Deployed Engineer role. The codebase is scaffolded but application
@@ -49,15 +49,90 @@ lenny-growth-assistant/
 
 ## Getting started
 
-> Setup instructions will be added once the backend and frontend are
-> scaffolded (Phase 2 / Phase 9). For now clone the repo and copy
-> `.env.example` → `.env`.
+### Prerequisites
+
+| Requirement | Version | Notes |
+|-------------|---------|-------|
+| Python | 3.10+ | Tested on 3.10.9 |
+| Ollama | Latest | Required for local/demo run |
+
+**Ollama model setup (one-time):**
+```bash
+ollama pull qwen2.5:7b-instruct   # LLM — required for demo
+ollama pull nomic-embed-text       # Embedding model — required for Phase 5+
+```
+
+### Install backend dependencies
 
 ```bash
-git clone <repo-url>
-cd lenny-growth-assistant
-cp .env.example .env   # fill in your secrets
+cd backend
+pip install -r requirements.txt
 ```
+
+### Configure environment
+
+```bash
+cp .env.example .env
+# Edit .env — no changes needed to run locally with Ollama
+```
+
+### Start the API server
+
+```bash
+cd backend
+uvicorn app.main:app --reload --port 8000
+```
+
+API is now available at `http://localhost:8000`.  
+Interactive docs at `http://localhost:8000/docs`.
+
+### Select LLM provider
+
+Set `LLM_PROVIDER` in your `.env` file:
+
+| Value | Provider | Requires |
+|-------|----------|---------|
+| `ollama` (default) | Local Ollama | Ollama running + model pulled |
+| `groq` | Groq cloud API | `GROQ_API_KEY` + `GROQ_MODEL` set |
+
+The app will refuse to start with a clear error message if Groq is selected
+but `GROQ_API_KEY` or `GROQ_MODEL` is missing.
+
+### Example API requests
+
+**Health check:**
+```bash
+curl http://localhost:8000/health
+# {"status":"ok","version":"0.1.0","environment":"development"}
+```
+
+**LLM provider status:**
+```bash
+curl http://localhost:8000/health/llm
+# {"status":"ok","provider":"ollama","model":"qwen2.5:7b-instruct","reachable":true,...}
+```
+
+**Chat (Ollama):**
+```bash
+curl -X POST http://localhost:8000/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What is product-market fit?"}'
+```
+
+### Running tests
+
+**Unit tests (no Ollama required):**
+```bash
+cd backend
+python -m pytest ../tests/test_health.py ../tests/test_chat.py ../tests/test_provider_factory.py -v
+```
+
+**Integration tests (requires Ollama running):**
+```bash
+cd backend
+python -m pytest ../tests/test_integration_ollama.py -v -s
+```
+
 
 ## Progress
 
@@ -162,4 +237,4 @@ ls docs/PRD.md docs/architecture.md docs/design.md
 
 ---
 
-*Last updated: 2026-08-26 — Phase 1b (product discovery & architecture) complete.*
+*Last updated: 2026-08-26 — Phase 2 (FastAPI + LLM provider foundation) complete. 17 unit tests passing. Ollama integration verified.*

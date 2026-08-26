@@ -1,0 +1,26 @@
+# ── Lenny Growth Assistant — Backend Dependencies ─────────────────────────────
+# Phase 2: FastAPI + LLM provider foundation
+# Pin major versions; allow patch updates.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Web framework
+fastapi==0.111.1
+uvicorn[standard]==0.30.1
+
+# Pydantic v2 (FastAPI 0.111 requires pydantic v2)
+pydantic==2.9.2
+pydantic-settings==2.4.0
+
+# HTTP client — used by OllamaProvider to call the local Ollama REST API
+httpx==0.28.1
+
+# Groq cloud LLM SDK (>=0.11.0 required for httpx 0.28 compatibility)
+groq==1.6.0
+
+# Environment variable loading
+python-dotenv==1.0.1
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest==8.2.2
+pytest-asyncio==0.23.7
+httpx  # already listed above; pytest uses httpx via starlette TestClient

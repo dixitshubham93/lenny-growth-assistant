@@ -79,22 +79,31 @@
 
 ---
 
-## Phase 2 — Backend / API
-> **Unblocked once Phase 1b documents are approved by user.**
+## Phase 2 — Backend / API ✅ COMPLETE
 
-- [ ] Initialise Python project in `backend/` (`pyproject.toml` or `requirements.txt`)
-- [ ] Create FastAPI application entry point (`backend/app/main.py`)
-- [ ] Add `/health` endpoint returning JSON status
-- [ ] Define project folder structure:
-  - [ ] `backend/app/routers/`
-  - [ ] `backend/app/models/`
-  - [ ] `backend/app/services/`
-  - [ ] `backend/app/core/` (config, logging, exceptions)
-- [ ] Implement CORS middleware
-- [ ] Implement structured JSON logging (`structlog` or `python-json-logger`)
-- [ ] Add `LLMProvider` abstract protocol / base class (no concrete implementation yet)
-- [ ] Add Pydantic settings class reading from `.env` (provider and model from env only)
-- [ ] Verify app starts with `uvicorn`
+- [x] Initialise Python project in `backend/` (`requirements.txt`)
+- [x] Create FastAPI application entry point (`backend/app/main.py`)
+- [x] Add `/health` endpoint returning JSON status
+- [x] Define project folder structure:
+  - [x] `backend/app/api/routes/`
+  - [x] `backend/app/llm/` (base, ollama, groq, factory)
+  - [x] `backend/app/schemas/` (chat, health)
+  - [x] `backend/app/core/` (config, logging)
+  - [x] `backend/app/errors/` (exceptions, handlers)
+- [x] Implement CORS middleware
+- [x] Implement structured JSON logging (`app/core/logging.py` — `_JsonFormatter`)
+- [x] Add `LLMProvider` Protocol / base class (`app/llm/base.py`)
+- [x] Add `OllamaProvider` concrete implementation (`app/llm/ollama.py`)
+- [x] Add `GroqProvider` concrete implementation (`app/llm/groq.py`)
+- [x] Add `get_llm_provider()` factory (`app/llm/factory.py`)
+- [x] Add Pydantic settings class reading from `.env` (`app/core/config.py`)
+- [x] Groq missing-key validation at startup (refuses to start, clear error)
+- [x] `/health/llm` endpoint — provider reachability check
+- [x] `POST /api/v1/chat` endpoint — end-to-end LLM path
+- [x] Structured error responses (400/422/502/503/504)
+- [x] Verify app starts with `uvicorn`
+- [x] 14 unit tests passing (no Ollama required)
+- [x] 3 Ollama integration tests passing (qwen2.5:7b-instruct verified)
 
 ---
 
@@ -276,4 +285,4 @@
 
 ---
 
-*Last updated: 2026-08-26 — Phase 1b (product discovery + architecture) COMPLETE. Remaining open decisions: OQ1, OQ2, OQ3, OQ6, OQ7, OQ8. Phase 2 unblocked once user approves documents.*
+*Last updated: 2026-08-26 — Phase 2 (FastAPI + LLM provider foundation) COMPLETE. 17 unit + integration tests passing. Remaining open decisions: OQ1, OQ2, OQ3, OQ6, OQ7, OQ8. Phase 3 (PostgreSQL) is next.*

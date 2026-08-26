@@ -205,11 +205,23 @@ Grounded assistant response (with source citations)
 | `docs/PRD.md` — product discovery document | COMPLETE |
 | `docs/architecture.md` — system architecture | COMPLETE |
 | `docs/design.md` — discovery-level placeholder | COMPLETE |
+| FastAPI app skeleton (`backend/app/main.py`) | COMPLETE |
+| Pydantic settings / env-driven config (`app/core/config.py`) | COMPLETE |
+| Structured JSON logging (`app/core/logging.py`) | COMPLETE |
+| `LLMProvider` Protocol + data types (`app/llm/base.py`) | COMPLETE |
+| `OllamaProvider` (`app/llm/ollama.py`) | COMPLETE |
+| `GroqProvider` (`app/llm/groq.py`) | COMPLETE |
+| `get_llm_provider()` factory (`app/llm/factory.py`) | COMPLETE |
+| `GET /health` and `GET /health/llm` endpoints | COMPLETE |
+| `POST /api/v1/chat` endpoint | COMPLETE |
+| Structured error responses (exceptions + handlers) | COMPLETE |
+| 14 unit tests (no Ollama) | COMPLETE |
+| 3 Ollama integration tests (qwen2.5:7b-instruct) | COMPLETE |
 | Vector store decision (ChromaDB PROPOSED) | PROPOSED — awaiting finalisation |
 | Frontend framework decision (React + Vite) | CANDIDATE — awaiting finalisation |
 | Ship 30 skill design (principles, prompt, boundary) | PENDING — Phase 7 |
 | Artifact security (full CSP policy OQ7) | PENDING — Phase 8 |
-| Phase 2+ (any application code) | BLOCKED — Phase 1b must be reviewed first |
+| Phase 3+ (PostgreSQL, RAG, etc.) | PENDING |
 
 ---
 
@@ -230,32 +242,38 @@ Grounded assistant response (with source citations)
 
 ## 10. Current State
 
-**Phase 1b (Product Discovery & Architecture Review) complete.**
+**Phase 2 (FastAPI + LLM Provider Foundation) complete.**
 
-Documents produced:
-- `docs/PRD.md` — full product discovery: users, jobs, pain, goals, journeys, metrics, assumptions, scope, acceptance criteria, risks, prioritisation, implementation plan
-- `docs/architecture.md` — full system architecture: component diagram, agent layer, RAG flow, ingestion pipeline, vector store evaluation (ChromaDB PROPOSED), LLM abstraction (Ollama + Groq), PostgreSQL schema, Ship30 skill boundary, artifact security, resilience, observability, deployment topology
-- `docs/design.md` — discovery-level placeholder with confirmed principles and artifact security constraints
+Backend running at `http://localhost:8000`. Verified end-to-end:
+- `GET /health` → 200 OK
+- `GET /health/llm` → provider=ollama, model=qwen2.5:7b-instruct, reachable=true
+- `POST /api/v1/chat` → answer from qwen2.5:7b-instruct in ~3s
 
-Resolved in this phase:
-- Local model: `qwen2.5:7b-instruct` (validated)
-- Embedding model: `nomic-embed-text` (leading candidate)
-- Cloud provider: Groq
-- Artifact isolation: Sandboxed iframe without allow-scripts (confirmed strategy)
+Concrete implementation decisions recorded:
+- `groq==1.6.0` (required for httpx 0.28 compatibility)
+- `pydantic==2.9.2` / `pydantic-settings==2.4.0`
+- `httpx==0.28.1`
+- Python 3.10.9 (runtime)
+- `pytest.ini` in `backend/` with `asyncio_mode=auto`
+- Provider dependency-injected via FastAPI `Depends()` — never directly imported in routes
+- Integration tests auto-skip when Ollama is not running
 
 ---
 
 ## 11. Current Next Step
 
-**Review Phase 1b documents (PRD, architecture.md, design.md) and finalise remaining open decisions before Phase 2.**
+**Phase 3 — PostgreSQL Persistence.**
 
-Required before Phase 2 begins:
-1. Confirm or override ChromaDB as vector store (OQ1)
-2. Confirm ingestion fetch strategy (OQ2)
-3. Confirm frontend framework (OQ6)
-4. Approve PRD and architecture.md
+Add SQLAlchemy async + asyncpg, define ORM models (Session, Message, Artifact),
+create Alembic migration, and wire session CRUD into the `/chat` endpoint.
 
-**No application implementation should begin until this review is complete.**
+**Remaining open decisions (still unresolved before relevant phases):**
+1. OQ1: ChromaDB vs pgvector vs Qdrant (blocks Phase 5)
+2. OQ2: Ingestion fetch strategy (blocks Phase 4)
+3. OQ6: React + Vite confirmed? (blocks Phase 9)
+4. OQ3: Chunking strategy (blocks Phase 4/5)
+
+**No Phase 3 should begin until the user signals readiness.**
 
 ---
 
