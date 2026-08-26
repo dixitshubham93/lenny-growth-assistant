@@ -28,6 +28,7 @@ class MessageSchema(BaseModel):
     role: str
     content: str
     created_at: datetime
+    sources: list | None = None
 
 
 class MessagesResponse(BaseModel):

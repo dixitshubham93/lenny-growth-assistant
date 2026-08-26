@@ -41,6 +41,7 @@ def _message_to_schema(msg) -> MessageSchema:
         role=msg.role,
         content=msg.content,
         created_at=msg.created_at,
+        sources=msg.sources,
     )
 
 

@@ -362,6 +362,7 @@
     const d = await r.json();
     const sid = d.session_id;
     sessions.unshift({ id: sid, created: new Date() });
+    localStorage.setItem('lenny_session_id', sid);
     renderSessionList();
     switchSession(sid);
     return sid;
@@ -562,6 +563,19 @@
   // ─── Init ────────────────────────────────────────────────────────────────────
   (async function init() {
     await checkHealth();
+    const storedSid = localStorage.getItem('lenny_session_id');
+    if (storedSid) {
+      try {
+        const r = await fetch(`${API}/sessions/${storedSid}`);
+        if (r.ok) {
+          sessions.unshift({ id: storedSid, created: new Date() });
+          await switchSession(storedSid);
+          return;
+        }
+      } catch (e) {
+        // Fallback to creating a new one if network error or 404
+      }
+    }
     await createSession();
   })();
 </script>
