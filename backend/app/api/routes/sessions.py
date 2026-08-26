@@ -109,3 +109,23 @@ async def list_session_messages(
         session_id=session_id,
         messages=[_message_to_schema(m) for m in messages],
     )
+
+
+@router.delete(
+    "/{session_id}",
+    status_code=204,
+    summary="Delete a session and all its messages",
+)
+async def remove_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """
+    Deletes a session and all associated messages.
+    404 if session does not exist.
+    """
+    from app.db.crud import delete_session
+    success = await delete_session(db, session_id)
+    if not success:
+        raise SessionNotFoundError(session_id)
+    return None

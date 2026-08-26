@@ -43,6 +43,17 @@ async def get_session(db: AsyncSession, session_id: str | uuid.UUID) -> Session 
     return result.scalar_one_or_none()
 
 
+async def delete_session(db: AsyncSession, session_id: str | uuid.UUID) -> bool:
+    """Delete a session by ID. Returns True if deleted, False if not found."""
+    session = await get_session(db, session_id)
+    if session is None:
+        return False
+    await db.delete(session)
+    await db.flush()
+    logger.info("Session deleted", extra={"component": "db", "session_id": str(session.id)})
+    return True
+
+
 # ── Messages ──────────────────────────────────────────────────────────────────
 
 async def create_message(

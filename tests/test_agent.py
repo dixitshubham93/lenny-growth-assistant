@@ -116,7 +116,9 @@ async def test_agent_ollama_ship30(mock_ship30, mock_db, settings, mock_provider
         result = await runner.run("Write an essay on growth.", [])
 
         assert result.answer == "I have created your Ship 30 essay."
-        assert "Ship 30 Essay" in result.artifact
+        # Ship30 returns essay in the answer, but now we ALSO auto-promote it to an artifact.
+        assert result.artifact is not None
+        assert "## Ship 30 Essay" in result.artifact or "<h2" in result.artifact
         assert len(result.sources) == 1
         assert result.skill_used == "ship30"
 
@@ -211,4 +213,6 @@ async def test_ship30_insufficient_grounding_regression(mock_search, mock_db, se
         result = await runner.run("write a ship30 essay about aliens", [])
 
         assert len(result.sources) == 0
-        assert "insufficient transcript evidence" in result.artifact
+        # essay text (with insufficient-evidence message) lands in the answer, not in artifact
+        assert "insufficient transcript evidence" in mock_provider.complete.return_value.content
+        assert result.artifact is not None
