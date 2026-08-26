@@ -30,6 +30,9 @@ aiosqlite==0.20.0             # SQLite async driver (unit test fixtures only)
 PyYAML>=6.0                   # YAML frontmatter parsing in ingestion/parse.py
 # httpx already listed above — also used in ingestion/fetch.py
 
+# ── Phase 5: pgvector / RAG ────────────────────────────────────────────────────
+pgvector>=0.3.0               # VECTOR(768) column type + cosine distance for SQLAlchemy
+
 # ── Testing ───────────────────────────────────────────────────────────────────
 pytest==8.2.2
 pytest-asyncio==0.23.7

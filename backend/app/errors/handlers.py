@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 
 from app.errors.exceptions import (
     DatabaseError,
+    EmbeddingError,
     InvalidRequestError,
     LLMProviderError,
     LLMTimeoutError,
@@ -145,4 +146,19 @@ async def handle_database_error(
         exc_info=True,
     )
     return _error_response(503, "database_error", exc.detail)
+
+
+async def handle_embedding_error(
+    request: Request, exc: EmbeddingError
+) -> JSONResponse:
+    """Ollama embedding call failed (timeout/HTTP error) → 503."""
+    logger.error(
+        "Embedding service error",
+        extra={"component": "embedding", "model": exc.model, "detail": exc.detail},
+    )
+    return _error_response(
+        503,
+        "embedding_error",
+        "Embedding service unavailable. Ensure Ollama is running with nomic-embed-text.",
+    )
 

@@ -72,3 +72,16 @@ class DatabaseError(LennyBaseError):
     Never exposes raw SQL or connection details in the message.
     """
 
+
+# ── Embedding / Vector errors ─────────────────────────────────────────────────
+
+class EmbeddingError(LennyBaseError):
+    """
+    The embedding model (Ollama nomic-embed-text) could not produce a vector.
+    Covers timeouts, HTTP errors, and unexpected response shapes.
+    """
+
+    def __init__(self, detail: str = "", model: str = "") -> None:
+        self.model = model
+        super().__init__(detail)
+

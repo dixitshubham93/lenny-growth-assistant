@@ -231,7 +231,14 @@ Grounded assistant response (with source citations)
 | `pytest.ini` at repo root — `pythonpath=backend .` | COMPLETE |
 | `github_token`, `chunk_size`, `chunk_overlap` added to `config.py` | COMPLETE |
 | `PyYAML>=6.0` added to `requirements.txt` | COMPLETE |
-| Vector store decision (ChromaDB PROPOSED) | PROPOSED — awaiting finalisation |
+| `TranscriptChunk` ORM model — `VECTOR(768)` + 13 metadata fields | COMPLETE |
+| Alembic migration `0002_chunks_vector.py` — pgvector extension + table | COMPLETE |
+| `embedding.py` — `embed_text()`, 768-dim validation, `EmbeddingError` | COMPLETE |
+| `retrieval.py` — exact cosine distance (`<=>`) retrieval service | COMPLETE |
+| `POST /api/v1/retrieve` — debug/RAG endpoint | COMPLETE |
+| `ingestion/index.py` — CLI indexer with `ON CONFLICT DO UPDATE` | COMPLETE |
+| 13 new Phase 5 tests; 90 total passing; 2 pgvector integration tests skip without DB | COMPLETE |
+| Vector store decision (OQ1) — pgvector | COMPLETE |
 | Frontend framework decision (React + Vite) | CANDIDATE — awaiting finalisation |
 | Ship 30 skill design (principles, prompt, boundary) | PENDING — Phase 7 |
 | Artifact security (full CSP policy OQ7) | PENDING — Phase 8 |
@@ -253,50 +260,55 @@ Grounded assistant response (with source citations)
 - OQ5 → `qwen2.5:7b-instruct` (Ollama); `nomic-embed-text` (embedding)
 - **OQ2 → Git Tree API + `raw.githubusercontent.com` + SHA-based manifest** (Phase 4 complete)
 - **OQ3 → Fixed-word sliding window: 500 target words, 100-word overlap, speaker-turn snapping** (Phase 4 complete)
+- **OQ1 → pgvector** extension on existing PostgreSQL; `VECTOR(768)`; exact cosine distance (Phase 5 complete)
 
 ---
 
 ## 10. Current State
 
-**Phase 4 (Transcript Ingestion) complete.**
+**Phase 5 (Vector Retrieval / RAG) complete.**
 
-Ingestion pipeline runs from repo root:
+Running from repo root:
 ```bash
-python -m ingestion.run --limit 3   # test run (3 episodes)
-python -m ingestion.run             # full run (~269 episodes)
+# Apply migration (requires PostgreSQL with pgvector extension)
+cd backend && alembic upgrade head
+
+# Index episodes
+python -m ingestion.index --slug ada-chen-rekhi          # single episode
+python -m ingestion.index --limit 3                       # first 3 episodes
+python -m ingestion.index                                 # all ~269 episodes
+
+# Test retrieval
+curl -s -X POST http://localhost:8000/api/v1/retrieve \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "how to build a product people love", "top_k": 3}'
 ```
 
-Verified output (3-episode run):
-- `ingestion/processed/episodes/{slug}.json` — YAML frontmatter + 162 speaker turns
-- `ingestion/processed/chunks/{slug}.jsonl` — 22 chunks, avg 709 words, all 13 metadata fields
-- `ingestion/processed/manifest.json` — SHA index; refresh run correctly skips unchanged episodes
-- `--force` flag force-refreshes a single episode regardless of SHA
-
 Key implementation decisions:
-- **Fetch**: Single Git Tree API call (not N per-episode Contents API calls); raw URL download
-- **Parse**: `yaml.safe_load()` for frontmatter; regex `Speaker (HH:MM:SS):` for turns; no field raises on absence
-- **Chunk**: 500-word sliding window; snaps to speaker-turn boundary ±50 words; hard-splits turns > 1000 words
-- **Timestamps**: `start_timestamp`/`end_timestamp` from first/last turn in each chunk window
-- **Source tracing**: Every chunk carries `episode_id`, `source_file`, `guest`, `date`, `youtube_url`, `video_id`
-- **Path fix**: Root-level `pytest.ini` with `pythonpath=backend .` enables both `from app.*` and `from ingestion.*`
-- 77 total unit tests pass (26 Phase 2/3 + 51 Phase 4 ingestion)
+- **Vector store**: pgvector on existing PostgreSQL — zero new infra
+- **Embedding**: `nomic-embed-text` via Ollama, dim=768 (confirmed live)
+- **Similarity**: Exact cosine distance `<=>` — no ANN index at this scale
+- **Idempotency**: `ON CONFLICT (chunk_id) DO UPDATE` in indexer + migration
+- **Graceful degradation**: `/retrieve` returns 200 + empty list when no chunks indexed
+- **SQL**: `CAST(:vec AS vector)` in raw SQL (asyncpg-safe; no ORM operator dependency)
+- 90 unit tests pass; 2 pgvector integration tests auto-skip without PostgreSQL
 
 ---
 
 ## 11. Current Next Step
 
-**Phase 5 — Vector Indexing & RAG.**
+**Phase 6 — Agent Layer.**
 
-Phase 4 JSONL output is ready for embedding:
+The retrieval pipeline is ready. The next phase wires it into the LLM:
 ```
-ingestion/processed/chunks/*.jsonl
-→ embeddings (nomic-embed-text via Ollama)
-→ vector store (ChromaDB — OQ1 pending finalisation)
-→ RAG retrieval endpoint
+GET /chat
+→ retrieve_chunks(query)    → top-k transcript chunks with metadata
+→ build system prompt       → LLM (Groq / Ollama)
+→ structured response       → {answer, sources[], artifact?}
+→ persist to DB
 ```
 
-**Open decisions for Phase 5:**
-1. OQ1: ChromaDB vs pgvector vs Qdrant (must resolve before Phase 5 starts)
+**Phase 6 unblocked** — all prerequisites complete (PostgreSQL, RAG, LLM providers).
 
 ---
 

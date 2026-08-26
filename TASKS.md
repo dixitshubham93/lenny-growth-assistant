@@ -155,18 +155,28 @@
 
 ---
 
-## Phase 5 — Vector Retrieval / RAG
-> **Blocked until vector store decision (OQ1) is finalised. ChromaDB is currently PROPOSED.**
-> **Embedding model candidate: nomic-embed-text via Ollama.**
+## Phase 5 — Vector Retrieval / RAG ✅ COMPLETE
 
-- [ ] Finalise vector store choice (OQ1): ChromaDB PROPOSED — confirm or select pgvector/Qdrant
-- [ ] Add chosen vector store to dependencies
-- [ ] Choose and configure embedding model (OQ2-adjacent)
-- [ ] Write `backend/app/services/embedding.py` — embed chunks and upsert
-- [ ] Write `backend/app/services/retrieval.py` — semantic search returning top-k chunks with source metadata
-- [ ] Expose `/retrieve` debug endpoint (development only)
-- [ ] Write integration test: query returns results with source citations
-- [ ] Document embedding model choice and chunk strategy in `docs/architecture.md`
+- [x] **OQ1 RESOLVED** — pgvector (extension on existing PostgreSQL; no new service)
+- [x] `pgvector>=0.3.0` added to `backend/requirements.txt`
+- [x] `TranscriptChunk` ORM model added to `backend/app/db/models.py` (VECTOR(768), all 13 Phase 4 metadata fields)
+- [x] Alembic migration `0002_chunks_vector.py` — `CREATE EXTENSION IF NOT EXISTS vector` + `transcript_chunks` table + unique index on `chunk_id`
+- [x] `backend/app/services/__init__.py` — package marker
+- [x] `backend/app/services/embedding.py` — `embed_text()`, `embed_batch()`, `EmbeddingError`; validates 768-dim output
+- [x] `EmbeddingError` added to `backend/app/errors/exceptions.py`
+- [x] `handle_embedding_error` (→ 503) added to `backend/app/errors/handlers.py`
+- [x] `EmbeddingError` handler registered in `backend/app/main.py`
+- [x] `backend/app/services/retrieval.py` — `retrieve_chunks()` with exact cosine distance (`embedding <=> CAST(:vec AS vector)`)
+- [x] `backend/app/schemas/retrieval.py` — `RetrievalRequest`, `RetrievedChunkSchema`, `RetrievalResponse`
+- [x] `backend/app/api/routes/retrieve.py` — `POST /api/v1/retrieve`; 200 with empty list when no chunks indexed
+- [x] `retrieve_router` mounted in `backend/app/main.py`
+- [x] `ingestion/index.py` — CLI `--slug`, `--limit`, `--force`; idempotent via `ON CONFLICT (chunk_id) DO UPDATE`
+- [x] `tests/test_embedding.py` — 6 unit tests (dim, timeout, HTTP 500, wrong dim, batch, empty)
+- [x] `tests/test_retrieval.py` — 8 unit tests (ordering, empty, metadata, endpoint 200/503/422, top_k)
+- [x] `tests/test_integration_pgvector.py` — 2 integration tests (auto-skip without DATABASE_URL)
+- [x] **90 total tests passing** (77 existing + 13 new); 2 pgvector integration tests skip without DB
+- [x] `embedding_dim: int = 768` is the confirmed model output (verified via live Ollama API)
+- [x] No IVFFlat/HNSW index — exact cosine similarity (correct for ~269 episode scale)
 
 ---
 

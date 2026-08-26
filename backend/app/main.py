@@ -25,6 +25,7 @@ from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.errors.exceptions import (
     DatabaseError,
+    EmbeddingError,
     InvalidRequestError,
     LLMProviderError,
     LLMTimeoutError,
@@ -34,6 +35,7 @@ from app.errors.exceptions import (
 )
 from app.errors.handlers import (
     handle_database_error,
+    handle_embedding_error,
     handle_invalid_request,
     handle_llm_provider_error,
     handle_llm_timeout,
@@ -46,6 +48,7 @@ from app.errors.handlers import (
 from app.api.routes import health as health_router
 from app.api.routes import chat as chat_router
 from app.api.routes import sessions as sessions_router
+from app.api.routes import retrieve as retrieve_router
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 
@@ -86,9 +89,9 @@ def create_app() -> FastAPI:
         title="Lenny Growth Assistant API",
         description=(
             "Conversational AI grounded in Lenny's Podcast transcripts. "
-            "Phase 3: Session persistence. RAG, artifacts, and frontend in later phases."
+            "Phase 5: pgvector semantic retrieval. RAG, artifacts, frontend in later phases."
         ),
-        version="0.2.0",
+        version="0.3.0",
         lifespan=lifespan,
         docs_url="/docs",
         redoc_url="/redoc",
@@ -106,6 +109,7 @@ def create_app() -> FastAPI:
     # ── Exception handlers (order: most-specific first) ───────────────────────
     application.add_exception_handler(RequestValidationError, handle_validation_error)
     application.add_exception_handler(SessionNotFoundError, handle_session_not_found)
+    application.add_exception_handler(EmbeddingError, handle_embedding_error)
     application.add_exception_handler(DatabaseError, handle_database_error)
     application.add_exception_handler(ProviderConfigError, handle_provider_config_error)
     application.add_exception_handler(ProviderUnavailableError, handle_provider_unavailable)
@@ -118,6 +122,7 @@ def create_app() -> FastAPI:
     application.include_router(health_router.router)
     application.include_router(sessions_router.router)
     application.include_router(chat_router.router)
+    application.include_router(retrieve_router.router)
 
     return application
 
